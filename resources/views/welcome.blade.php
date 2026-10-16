@@ -464,7 +464,7 @@
                         Temukan <span class="mx-1.5">•</span> Lindungi <span class="mx-1.5">•</span> Hubungkan
                     </p>
                     <h1 class="mt-5 font-heading text-[34px] font-semibold leading-[1.12] tracking-tight text-satwa-forest sm:text-[42px]">
-                        Temukan satwa yang hilang atau jelajahi peluang adopsi.
+                        Temukan kucing yang hilang atau jelajahi peluang adopsi.
                     </h1>
                     <p class="mt-5 max-w-md text-[13.5px] leading-6 text-satwa-muted">
                         SatwaTrace adalah platform terpadu untuk pencarian peliharaan yang hilang dan adopsi satwa liar/eksotis legal dengan informasi yang terverifikasi.
