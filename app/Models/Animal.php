@@ -6,7 +6,6 @@ use Database\Factories\AnimalFactory;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Storage;
 
 class Animal extends Model
 {
@@ -57,7 +56,7 @@ class Animal extends Model
                     return $path;
                 }
 
-                return Storage::url($path);
+                return asset('storage/'.ltrim($path, '/'));
             },
         );
     }
