@@ -2,7 +2,7 @@
     <!-- Full-Width Splash Photo from Unsplash -->
     <img
         src="https://images.unsplash.com/photo-1548767797-d8c844163c4c?auto=format&fit=crop&w=1600&q=85"
-        alt="Satwa Peliharaan SatwaTrace"
+        alt="Satwa Peliharaan SatwaTrace bagus"
         class="absolute inset-0 h-full w-full object-cover object-center"
         onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?auto=format&fit=crop&w=1600&q=85';"
         loading="eager"
