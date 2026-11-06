@@ -120,7 +120,6 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           password: ${{ secrets.SSH_PASSWORD }}
-          port: ${{ secrets.SSH_PORT }}
           source: "vendor.tar.gz"
           target: ${{ secrets.TARGET_DIR }}
 
@@ -130,7 +129,6 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           password: ${{ secrets.SSH_PASSWORD }}
-          port: ${{ secrets.SSH_PORT }}
           script: |
             cd ${{ secrets.TARGET_DIR }}
             git pull origin main
