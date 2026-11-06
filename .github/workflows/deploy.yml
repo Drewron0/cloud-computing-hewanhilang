@@ -1,76 +1,140 @@
-name: Deploy Laravel
+name: Laravel 13 CI/CD Deployment
 
 on:
   push:
-    branches:
-      - main # Trigger saat push ke branch main
+    branches: [ "main" ] # Triggers only when code is pushed to your main production branch
 
 jobs:
-  build-and-deploy:
+  laravel-tests:
+    name: Run Tests & Build Assets
     runs-on: ubuntu-latest
 
-    env:
-      TARGET_DIR: ${{ secrets.ROOT_DIRECTORY }}
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: yes
+          MYSQL_DATABASE: testing
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+    - name: Checkout Code
+      uses: actions/checkout@v4
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.4'
-          extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql, bcmath
-          coverage: none
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.5'
+        extensions: mbstring, xml, ctype, iconv, mysql, bcmath, filter, zip
+        tools: composer:v2
+        coverage: none
 
-      - name: Install Composer Dependencies
-        run: composer install --optimize-autoloader --no-dev --no-progress
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
+    - name: Copy Environment File
+      run: php -r "file_exists('.env') || copy('.env.example', '.env');"
 
-      - name: NPM Install & Build
-        run: |
-          npm ci
-          npm run build
+    - name: Cache Composer Dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.composer/cache/files
+        key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+        restore-keys: ${{ runner.os }}-composer-
 
-      - name: Install sshpass
-        run: sudo apt-get update && sudo apt-get install -y sshpass
+    - name: Install Composer Dependencies
+      run: composer install --prefer-dist --no-ansi --no-interaction --no-progress --no-scripts
 
-      - name: Deploy to VPS via Rsync (Password Auth)
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
-          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-        run: |
-          # Otomatis bersihkan jika ada https://, http://, atau tanda slash yang tidak sengaja terbawa
-          CLEAN_HOST=$(echo "$SSH_HOST" | sed -e 's|^https\?://||' -e 's|/.*||' -e 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    - name: Generate Application Key
+      run: php artisan key:generate
 
-          sshpass -p "$SSH_PASSWORD" rsync -avz --delete \
-            -e "ssh -o StrictHostKeyChecking=no" \
-            --exclude='.git' \
-            --exclude='.env' \
-            --exclude='node_modules' \
-            --exclude='tests' \
-            --exclude='storage/logs' \
-            --exclude='storage/app/public' \
-            ./ $SSH_USERNAME@$CLEAN_HOST:${{ env.TARGET_DIR }}/
+    - name: Run Migrations & Tests
+      run: |
+        php artisan migrate --env=testing
+        php artisan test
+      env:
+        DB_CONNECTION: mysql
+        DB_HOST: 127.0.0.1
+        DB_PORT: 3306
+        DB_DATABASE: testing
+        DB_USERNAME: root
+        DB_PASSWORD: ""
 
-      - name: Run Post-Deploy Artisan Commands
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
-          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-        run: |
-          CLEAN_HOST=$(echo "$SSH_HOST" | sed -e 's|^https\?://||' -e 's|/.*||' -e 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    # Compile frontend production assets (Vite) so they are ready for deployment
+    - name: Install NPM Dependencies & Build Assets
+      run: |
+        npm ci
+        npm run build
 
-          sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no $SSH_USERNAME@$CLEAN_HOST "bash -s" << 'EOF'
-            cd ${{ env.TARGET_DIR }}
-            php artisan storage:link
-            php artisan config:cache
-            php artisan route:cache
-            php artisan view:cache
-            php artisan migrate --force
-          EOF
+    # Optional: Push compiled production assets back to Git if your deployment relies on Git integration
+    - name: Commit Built Assets (If required by your hosting Git sync)
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@://github.com"
+        git add public/build -f
+        git diff-index --quiet HEAD || git commit -m "chore: build production assets [skip ci]"
+        git push origin main
+      env:
+        GITHUB_TOKEN: ${{ secrets.TOKEN_GITHUB }}
+
+  deploy:
+    name: Deploy to Live Hosting
+    needs: laravel-tests # Ensures deployment only happens if tests pass successfully
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.5'
+        extensions: mbstring, xml, ctype, iconv, bcmath, filter, zip
+        tools: composer:v2
+        coverage: none
+
+    - name: Cache Composer Dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.composer/cache/files
+        key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+        restore-keys: ${{ runner.os }}-composer-
+
+    # vendor/ is gitignored, so it must be built here (production deps only) and
+    # shipped to the server separately, since the server does not have Composer.
+    - name: Install Production Composer Dependencies
+      run: composer install --no-dev --optimize-autoloader --prefer-dist --no-ansi --no-interaction --no-progress
+
+    - name: Package Vendor Directory
+      run: tar -czf vendor.tar.gz vendor
+
+    - name: Upload Vendor Package to Server
+      uses: appleboy/scp-action@v1.0.0
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USERNAME }}
+        password: ${{ secrets.SSH_PASSWORD }}
+        port: 22
+        source: "vendor.tar.gz"
+        target: ${{ secrets.ROOT_DIRECTORY }}
+
+    - name: Deploy via SSH
+      uses: appleboy/ssh-action@v1.2.5
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USERNAME }}
+        password: ${{ secrets.SSH_PASSWORD }}
+        port: 22
+        script: |
+          cd ${{ secrets.ROOT_DIRECTORY }}
+          git pull origin main
+          rm -rf vendor
+          tar -xzf vendor.tar.gz
+          rm -f vendor.tar.gz
+          php artisan migrate --force
+          php artisan config:cache
