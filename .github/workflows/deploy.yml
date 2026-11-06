@@ -4,6 +4,9 @@ on:
   push:
     branches: [ "main" ] # Triggers only when code is pushed to your main production branch
 
+permissions:
+  contents: write
+
 jobs:
   laravel-tests:
     name: Run Tests & Build Assets
